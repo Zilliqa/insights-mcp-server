@@ -30,6 +30,7 @@ export async function getTotalValidatorEarnings(
     // If startTime is not provided, use 1 hour before the end time.
     const end = endTime ? new Date(endTime) : new Date();
     const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000);
+    const timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
     const queryStartTime = start.toISOString();
     const queryEndTime = end.toISOString();
 
@@ -59,7 +60,10 @@ export async function getTotalValidatorEarnings(
         // Format the response as requested.
         const response = {
             status: "success",
-            data: { total_earnings_zil }
+            data: { 
+                total_earnings_zil,
+                message: `The total ZIL rewards for validator ${validator} were ${total_earnings_zil.toFixed(2)}${timeFrameText}.`
+            }
         };
 
         return {
@@ -86,6 +90,7 @@ export async function getValidatorEarningsBreakdown(
     // If startTime is not provided, use 1 hour before the end time.
     const end = endTime ? new Date(endTime) : new Date();
     const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000);
+    const timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
     const queryStartTime = start.toISOString();
     const queryEndTime = end.toISOString();
     
@@ -127,6 +132,7 @@ export async function getValidatorEarningsBreakdown(
             data: {
                 proposal_earnings_zil,
                 cosigning_earnings_zil,
+                message: `Earnings breakdown for validator ${validator}${timeFrameText}: Proposal Rewards: ${proposal_earnings_zil.toFixed(2)} ZIL, Cosigning Rewards: ${cosigning_earnings_zil.toFixed(2)} ZIL.`
             }
         };
 
@@ -171,7 +177,7 @@ export async function getValidatorStake(
             arguments: toolArguments,
         });
 
-        const total_stake_zil = parseTimeSeriesValue(toolCallResult.content);
+        const total_stake_zil = parseTimeSeriesLatestValue(toolCallResult.content);
 
         // Format the response as requested.
         const response = {
@@ -205,6 +211,7 @@ export async function getProposerSuccessRate(
     // If startTime is not provided, use 1 hour before the end time.
     const end = endTime ? new Date(endTime) : new Date();
     const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000);
+    const timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
     const queryStartTime = start.toISOString();
     const queryEndTime = end.toISOString();
 
@@ -258,6 +265,7 @@ export async function getProposerSuccessRate(
             status: "success",
             data: {
                 proposer_success_rate,
+                message: `Proposer success rate for validator ${public_key} was ${proposer_success_rate}${timeFrameText}.`
             }
         };
 
@@ -286,6 +294,7 @@ export async function getCosignerSuccessRate(
     // If startTime is not provided, use 1 hour before the end time.
     const end = endTime ? new Date(endTime) : new Date();
     const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000);
+    const timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
     const queryStartTime = start.toISOString();
     const queryEndTime = end.toISOString();
 
@@ -334,6 +343,7 @@ export async function getCosignerSuccessRate(
             status: "success",
             data: {
                 cosigner_success_rate,
+                message: `Cosigner success rate for validator ${public_key} was ${cosigner_success_rate}${timeFrameText}.`
             }
         };
 
@@ -376,6 +386,45 @@ function parseTimeSeriesValue(content: unknown): number {
             console.error("Failed to parse time series data from sub-MCP:", e);
         }
     }
+    return 0;
+}
+
+/**
+ * Parses the content of a time series response to extract the doubleValue.
+ * This specific parser is designed to handle cases where multiple time series
+ * might be returned but only the latest value.
+ * @param content The `content` array from a toolCallResult.
+ * @returns The extracted double value, or 0 if not found.
+ */
+
+function parseTimeSeriesLatestValue(content: unknown): number {
+    if (Array.isArray(content) && content.length > 0 && typeof content[0].text === 'string') {
+        try {
+            const timeSeriesData = JSON.parse(content[0].text);
+
+            if (Array.isArray(timeSeriesData) && timeSeriesData.length > 0) {
+                // The issue is that the query returns duplicate records.
+                // Since they report the same value, we just need the value from the first record.
+                const firstTimeSeries = timeSeriesData[0];
+                
+                // Ensure the first record has points
+                if (firstTimeSeries?.points?.[0]?.value) {
+                    const valueContainer = firstTimeSeries.points[0].value;
+                    
+                    // Prioritize doubleValue, then check for int64Value
+                    if (typeof valueContainer.doubleValue === 'number') {
+                        return valueContainer.doubleValue;
+                    }
+                    if (typeof valueContainer.int64Value !== 'undefined') {
+                        return Number(valueContainer.int64Value);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to parse time series data from sub-MCP:", e);
+        }
+    }
+    // Return 0 if data is not found or parsing fails
     return 0;
 }
 

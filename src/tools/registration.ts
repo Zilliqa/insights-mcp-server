@@ -33,8 +33,8 @@ function withValidatorResolution<T extends { validator: string }>(
 }
 
 /**
- * Finds a validator by name, public key, or address.
- * @param identifier The name, public key, or address of the validator.
+ * Finds a validator by name, public key, address, or zil_address.
+ * @param identifier The name, public key, address, or zil_address of the validator.
  * @returns The validator object if found, otherwise undefined.
  */
 function findValidator(identifier: string) {
@@ -43,16 +43,17 @@ function findValidator(identifier: string) {
     (v) =>
       v.name.toLowerCase() === normalizedIdentifier ||
       v.public_key.toLowerCase() === normalizedIdentifier ||
-      v.address.toLowerCase() === normalizedIdentifier
+      v.address.toLowerCase() === normalizedIdentifier ||
+      v.zil_address.toLowerCase() === normalizedIdentifier
   );
 }
 
 export const registerTools = (server: McpServer): void => {
   server.tool(
     "get_validator_info",
-    "Gets all available information for a validator (name, public key, address) by providing any one of those identifiers.",
+    "Gets all available information for a validator (name, public key, address, zil_address) by providing any one of those identifiers.",
     {
-      validator: z.string().describe("The name, public key, or address of the validator."),
+      validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
     },
     withValidatorResolution(async (params, validatorInfo) => {
       return { content: [{ type: 'text', text: JSON.stringify({ status: "success", data: validatorInfo }) }] };
@@ -63,7 +64,7 @@ export const registerTools = (server: McpServer): void => {
     "get_total_validator_earnings",
     "Gets the total earnings for a specific validator. If startTime and endTime are not provided, it defaults to the last hour.",
     {
-        validator: z.string().describe("The name, public key, or address of the validator."),
+        validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
         startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
@@ -76,7 +77,7 @@ export const registerTools = (server: McpServer): void => {
     "get_validator_earnings_breakdown",
     "Provides a detailed breakdown of a validator's earnings, separating rewards from block proposals and cosignatures. If startTime and endTime are not provided, it defaults to the last hour.",
     {
-        validator: z.string().describe("The name, public key, or address of the validator."),
+        validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
         startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
@@ -89,7 +90,7 @@ export const registerTools = (server: McpServer): void => {
     "get_validator_stake",
     "Retrieves the total amount of ZIL currently delegated to a validator, representing their weight in the consensus mechanism.",
     {
-        validator: z.string().describe("The name, public key, or address of the validator."),
+        validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
     },
     withValidatorResolution(async (params, validatorInfo) => {
       return getValidatorStake(validatorInfo.public_key);
@@ -100,7 +101,7 @@ export const registerTools = (server: McpServer): void => {
     "get_proposer_success_rate",
     "Measures a validator's performance specifically when tasked with proposing a new block. A 100% proposer success rate is the gold standard. A missed proposal means a delay in the chain and lost rewards for that validator. This metric is a critical indicator of a validator's node stability and network latency. If startTime and endTime are not provided, it defaults to the last hour.",
     {
-        validator: z.string().describe("The name, public key, or address of the validator."),
+        validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
         startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
@@ -113,7 +114,7 @@ export const registerTools = (server: McpServer): void => {
     "get_cosigner_success_rate",
     "Measures a validator's performance when tasked with cosigning (attesting to) a block proposed by another validator. Cosigning is the most frequent duty. A high success rate demonstrates consistent uptime and connectivity. Even a small dip here can lead to a noticeable reduction in rewards over time. If startTime and endTime are not provided, it defaults to the last hour.",
     {
-        validator: z.string().describe("The name, public key, or address of the validator."),
+        validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
         startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
