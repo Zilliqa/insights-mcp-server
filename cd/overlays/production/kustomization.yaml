@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: validator-mcp-server-prd
+
+patches:
+  - target:
+      kind: HTTPRoute
+      name: validator-mcp-server
+    patch: |-
+      - op: replace
+        path: "/spec/hostnames/0"
+        value: validator.mcp.zilliqa.com
+      - op: replace
+        path: "/spec/parentRefs/0/name"
+        value: mcp-gateway
+      - op: replace
+        path: "/spec/parentRefs/0/namespace"
+        value: mcp-gateway-prd
