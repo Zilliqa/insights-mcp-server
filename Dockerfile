@@ -32,6 +32,7 @@ WORKDIR /app
 
 # We also copy the entire built monorepo's node_modules to handle workspace dependencies.
 COPY --chown=nodejs:nodejs --from=builder /app/node_modules ./node_modules
+COPY --chown=nodejs:nodejs --from=builder /app/package.json ./package.json
 
 # Copy the built bundle from the builder stage.
 COPY --chown=nodejs:nodejs --from=builder /app/build ./build
