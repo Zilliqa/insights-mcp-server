@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 // --- Constants for Google Cloud Monitoring ---
 const GCP_PROJECT_ID = "prj-p-devops-services-tvwmrf63";
@@ -8,10 +9,6 @@ const METRIC_TYPE_EARNINGS = "workload.googleapis.com/validator_earned_reward";
 const METRIC_TYPE_PROPOSALS = "prometheus.googleapis.com/zilliqa_proposed_views_total/counter";
 const METRIC_TYPE_COSIGNATURES = "prometheus.googleapis.com/zilliqa_cosigned_views_total/counter";
 const METRIC_TYPE_STAKE = "prometheus.googleapis.com/zilliqa_deposit_balance/gauge";
-
-// --- Constants for Downstream MCP Client ---
-const MCP_COMMAND = "node";
-const MCP_ARGS = ["/home/psl/workspace/gcloud-mcp/packages/observability-mcp/dist/bundle.js"];
 
 /**
  * Gets total validator earnings by acting as a client to another downstream MCP server.
@@ -437,18 +434,29 @@ function parseTimeSeriesLatestValue(content: unknown): number {
 async function withMcpClient<T>(
     action: (client: Client) => Promise<T>
 ): Promise<{ content: any[] }> {
+    // Configuration for downstream MCP client
+    const subMcpUrl = process.env.OBSERVABILITY_MCP_URL;
+    const subMcpCommand = process.env.OBSERVABILITY_MCP_COMMAND || "node";
+    const subMcpArgs = [process.env.OBSERVABILITY_MCP_ARGS || "../gcloud-mcp/packages/observability-mcp/dist/bundle.js"];
+
     const mcpClient = new Client({ name: "observability-mcp", version: "1.0.0" });
-    const transport = new StdioClientTransport({ command: MCP_COMMAND, args: MCP_ARGS });
+    
+    let transport;
+    if (subMcpUrl && (subMcpUrl.startsWith("http://") || subMcpUrl.startsWith("https://"))) {
+        console.error(`Connecting to sub-MCP server via HTTP: ${subMcpUrl}`);
+        transport = new StreamableHTTPClientTransport(new URL(subMcpUrl));
+    } else {
+        console.error(`Connecting to sub-MCP server via stdio: ${subMcpCommand} ${subMcpArgs}`);
+        transport = new StdioClientTransport({
+            command: subMcpCommand,
+            args: subMcpArgs,
+        });
+    }
 
     try {
-        console.error("Connecting to sub-MCP server...");
         await mcpClient.connect(transport);
-        
         const result = await action(mcpClient);
-
-        console.error("Received response from sub-MCP server.");        
-        // If the action returns an array, assume it's the complete 'content' array.
-        // Otherwise, if it's a single content part object, wrap it in an array.
+        console.error("Received response from sub-MCP server.");
         const content = Array.isArray(result) ? result : [result];
         return { content };
     } catch (error) {
