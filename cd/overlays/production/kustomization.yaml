@@ -26,4 +26,4 @@ patches:
     patch: |-
       - op: add
         path: /data/OBSERVABILITY_MCP_URL
-        value: "http://observability-mcp.observability-mcp-prd.svc.cluster.local:3000"
+        value: "http://observability-mcp.observability-mcp-prd.svc.cluster.local:3000/mcp"
