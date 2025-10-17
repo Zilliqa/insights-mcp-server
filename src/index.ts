@@ -9,7 +9,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 
 // HTTP Config
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const HOST = '0.0.0.0';
 // ------------------------------------------------------------------
 
@@ -126,7 +126,7 @@ async function main() {
         });
 
         // Start the HTTP server
-        const httpServer = app.listen(PORT, HOST, (error) => {
+        const httpServer = app.listen(Number(PORT), HOST, (error) => {
             if (error) {
                 console.error('Failed to start server:', error);
                 process.exit(1);
