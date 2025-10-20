@@ -2,7 +2,7 @@ define: &region "asia-southeast1"
 
 global:
   tf_state_bucket: "bkt-prj-p-devops-services-tvwmrf63-state"
-  tf_state_prefix: "terraform/validator-mcp-server"
+  tf_state_prefix: "terraform/insights-mcp-server"
 
 registries:
   staging: asia-docker.pkg.dev/prj-d-devops-services-4dgwlsse/zilliqa-private
@@ -16,8 +16,8 @@ clusters:
     bastion_name: vm-d-staging-bastion-ase1
     bastion_zone: asia-southeast1-a
     apps:
-      validator-mcp-server:
-        repo: https://github.com/Zilliqa/validator-mcp-server
+      insights-mcp-server:
+        repo: https://github.com/Zilliqa/insights-mcp-server
         path: cd/overlays/staging
         track: staging
         type: kustomize

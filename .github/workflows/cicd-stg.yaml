@@ -19,7 +19,7 @@ jobs:
 
     env:
       REGISTRY: ${{ secrets.REGISTRY }}
-      IMAGE_NAME: ${{ secrets.REGISTRY }}/${{ secrets.GCP_PROJECT_ID_STG }}/zilliqa-private/validator-mcp-server
+      IMAGE_NAME: ${{ secrets.REGISTRY }}/${{ secrets.GCP_PROJECT_ID_STG }}/zilliqa-private/insights-mcp-server
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
       fail-fast: false
       matrix:
         application:
-          - validator-mcp-server
+          - insights-mcp-server
     env:
       APP_NAME: ${{ matrix.application }}
       Z_ENV: z.yaml
@@ -83,11 +83,11 @@ jobs:
           gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://${{ env.REGISTRY }}
           docker run --rm \
               -e ZQ_USER='${{ env.Z_SERVICE_ACCOUNT }}' \
-              -e Z_ENV='/validator-mcp-server/${{ env.Z_ENV }}' \
+              -e Z_ENV='/insights-mcp-server/${{ env.Z_ENV }}' \
               -e OP_SERVICE_ACCOUNT_TOKEN='${{ env.OP_SERVICE_ACCOUNT_TOKEN }}' \
               -e GITHUB_PAT='${{ env.GITHUB_PAT }}' \
               -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE='/google/application_default_credentials.json' \
-              -v `pwd`:/validator-mcp-server \
+              -v `pwd`:/insights-mcp-server \
               -v ${{ steps.google-auth.outputs.credentials_file_path }}:/google/application_default_credentials.json \
               --name z_container ${{ env.Z_IMAGE }} \
-              bash -c "gcloud config set account ${{ env.Z_SERVICE_ACCOUNT }} && z /app /validator-mcp-server app sync --cache-dir .cache ${{ env.APP_NAME }}"
+              bash -c "gcloud config set account ${{ env.Z_SERVICE_ACCOUNT }} && z /app /insights-mcp-server app sync --cache-dir .cache ${{ env.APP_NAME }}"

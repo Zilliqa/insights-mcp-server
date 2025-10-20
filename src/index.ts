@@ -16,9 +16,9 @@ const HOST = '0.0.0.0';
 // Create server instance
 const getServer = (): McpServer => {
     const server = new McpServer({
-        name: 'validator-mcp',
+        name: 'insights-mcp-server',
         version: pkg.version,
-        title: 'Zilliqa Validator MCP',
+        title: 'Zilliqa Insights MCP',
         description: 'MCP Server for interacting with the Zilliqa validators metrics and APIs',
     });
     registerTools(server);
