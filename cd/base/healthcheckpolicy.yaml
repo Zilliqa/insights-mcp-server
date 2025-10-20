@@ -1,10 +1,10 @@
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
-  name: validator-mcp-server
-  namespace: validator-mcp-server
+  name: insights-mcp-server
+  namespace: insights-mcp-server
   labels:
-    app.kubernetes.io/name: validator-mcp-server
+    app.kubernetes.io/name: insights-mcp-server
 spec:
   default:
     checkIntervalSec: 10
@@ -20,4 +20,4 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: validator-mcp-server
+    name: insights-mcp-server

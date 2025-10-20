@@ -4,16 +4,16 @@ kind: Kustomization
 resources:
   - ../../base
 
-namespace: validator-mcp-server-stg
+namespace: insights-mcp-server-stg
 
 patches:
   - target:
       kind: HTTPRoute
-      name: validator-mcp-server
+      name: insights-mcp-server
     patch: |-
       - op: replace
         path: "/spec/hostnames/0"
-        value: validator.mcp.zilstg.dev
+        value: insights.mcp.zilstg.dev
       - op: replace
         path: "/spec/parentRefs/0/name"
         value: mcp-gateway
@@ -22,7 +22,7 @@ patches:
         value: mcp-gateway-stg
   - target:
       kind: ConfigMap
-      name: validator-mcp-server
+      name: insights-mcp-server
     patch: |-
       - op: add
         path: /data/OBSERVABILITY_MCP_URL

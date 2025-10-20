@@ -4,16 +4,16 @@ kind: Kustomization
 resources:
   - ../../base
 
-namespace: validator-mcp-server-prd
+namespace: insights-mcp-server-prd
 
 patches:
   - target:
       kind: HTTPRoute
-      name: validator-mcp-server
+      name: insights-mcp-server
     patch: |-
       - op: replace
         path: "/spec/hostnames/0"
-        value: validator.mcp.zilliqa.com
+        value: insights.mcp.zilliqa.com
       - op: replace
         path: "/spec/parentRefs/0/name"
         value: mcp-gateway
@@ -22,7 +22,7 @@ patches:
         value: mcp-gateway-prd
   - target:
       kind: ConfigMap
-      name: validator-mcp-server
+      name: insights-mcp-server
     patch: |-
       - op: add
         path: /data/OBSERVABILITY_MCP_URL
