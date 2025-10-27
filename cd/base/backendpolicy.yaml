@@ -1,0 +1,11 @@
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: insights-mcp-server
+spec:
+  default:
+    securityPolicy: mcp-gateway
+  targetRef:
+    group: ""
+    kind: Service
+    name: insights-mcp-server
