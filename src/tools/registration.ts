@@ -1,18 +1,25 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { validators, ValidatorData } from './validators.js';
 import {
   getTotalValidatorEarnings,
   getValidatorEarningsBreakdown,
   getValidatorStake,
   getProposerSuccessRate,
   getCosignerSuccessRate,
+  getValidators,
 } from './index.js';
 
 type ToolHandler<T extends { validator: string }> = (
   params: T,
   validatorInfo: ValidatorData
 ) => Promise<any>;
+
+export type ValidatorData = {
+  name: string; 
+  public_key: string; 
+  address: string; 
+  zil_address: string;
+};
 
 /**
  * A higher-order function that wraps a tool's implementation with validator resolution logic.
@@ -24,7 +31,12 @@ function withValidatorResolution<T extends { validator: string }>(
   handler: ToolHandler<T>
 ) {
   return async (params: T) => {
-    const validatorInfo = findValidator(params.validator);
+    const validators = await getValidators();
+    if (validators.length === 0) {
+      return { content: [{ type: 'text', text: JSON.stringify({ status: "failed", reason: "Could not fetch validator list from the monitoring service." }) }] };
+    }
+
+    const validatorInfo = findValidator(params.validator, validators);
     if (!validatorInfo) {
       return { content: [{ type: 'text', text: JSON.stringify({ status: "failed", reason: `Validator '${params.validator}' not found.` }) }] };
     }
@@ -37,7 +49,7 @@ function withValidatorResolution<T extends { validator: string }>(
  * @param identifier The name, public key, address, or zil_address of the validator.
  * @returns The validator object if found, otherwise undefined.
  */
-function findValidator(identifier: string) {
+function findValidator(identifier: string, validators: ValidatorData[]) {
   const normalizedIdentifier = identifier.toLowerCase();
   return validators.find(
     (v) =>
