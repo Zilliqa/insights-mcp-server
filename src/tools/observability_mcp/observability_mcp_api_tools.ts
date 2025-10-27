@@ -9,6 +9,60 @@ const METRIC_TYPE_EARNINGS = "workload.googleapis.com/validator_earned_reward";
 const METRIC_TYPE_PROPOSALS = "prometheus.googleapis.com/zilliqa_proposed_views_total/counter";
 const METRIC_TYPE_COSIGNATURES = "prometheus.googleapis.com/zilliqa_cosigned_views_total/counter";
 const METRIC_TYPE_STAKE = "prometheus.googleapis.com/zilliqa_deposit_balance/gauge";
+const METRIC_TYPE_VALIDATORS = "custom.googleapis.com/zilliqa/validators";
+
+/**
+ * Fetches the list of all validators from the downstream observability MCP server.
+ * It queries a custom metric in Google Cloud Monitoring that holds validator metadata.
+ * @returns A promise that resolves to an array of validator data objects.
+ */
+export async function getValidators(): Promise<{ name: string; public_key: string; address: string; zil_address: string; }[]> {
+    // We call withMcpClient and then unpack the result to match the function's return signature.
+    const result = await withMcpClient(async (mcpClient) => {
+        // We query for the last known value of the validator metric over a wide time range.
+        const end = new Date();
+        const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+
+        const toolArguments = {
+            name: `projects/${GCP_PROJECT_ID}`,
+            // This filter targets the custom metric holding validator information.
+            filter: `metric.type = "${METRIC_TYPE_VALIDATORS}" AND resource.type = "global"`,
+            interval: {
+                startTime: start.toISOString(),
+                endTime: end.toISOString(),
+            },
+            // We only need the latest point for each validator series.
+            aggregation: {
+                alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
+                perSeriesAligner: 'ALIGN_MEAN',
+            },
+        };
+
+        const toolCallResult = await mcpClient.callTool({
+            name: 'list_time_series',
+            arguments: toolArguments,
+        });
+
+        if (Array.isArray(toolCallResult.content) && toolCallResult.content.length > 0 && typeof toolCallResult.content[0].text === 'string') {
+            try {
+                const timeSeriesData = JSON.parse(toolCallResult.content[0].text);
+                // The validator info is stored in the metric labels. We map over the time series to extract it.
+                return { type: 'json', data: timeSeriesData.map((ts: any) => ts.metric.labels) };
+            } catch (e) {
+                console.error("Failed to parse validator list from sub-MCP:", e);
+            }
+        }
+
+        return []; // Return empty array on failure
+    });
+
+    // The result from withMcpClient is { content: [ { type: 'json', data: [ ...validators ] } ] }
+    // We need to extract the data array.
+    if (Array.isArray(result.content) && result.content.length > 0 && result.content[0].type === 'json' && Array.isArray(result.content[0].data)) {
+        return result.content[0].data;
+    }
+    return []; // Return empty array if the structure is not as expected or on error.
+}
 
 /**
  * Gets total validator earnings by acting as a client to another downstream MCP server.
