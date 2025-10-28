@@ -1,12 +1,8 @@
-name: "CICD staging"
+name: "CICD production"
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - main
+  release:
+    types: [published]
 
 jobs:
   build:
@@ -19,7 +15,7 @@ jobs:
 
     env:
       REGISTRY: ${{ secrets.REGISTRY }}
-      IMAGE_NAME: ${{ secrets.REGISTRY }}/${{ secrets.GCP_PROJECT_ID_STG }}/zilliqa-public/insights-mcp-server
+      IMAGE_NAME: ${{ secrets.REGISTRY }}/${{ secrets.GCP_PROJECT_ID_PRD }}/zilliqa-public/insights-mcp-server
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,17 +28,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
 
-      - name: Docker build and push in staging
+      - name: Docker build and push in production
         uses: Zilliqa/gh-actions-workflows/actions/ci-dockerized-app-build-push@v2
         with:
           context: .
-          push: ${{ github.ref_name == github.event.repository.default_branch}}
-          tag: ${{ env.IMAGE_NAME }}
+          push: true
+          tag: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           tag-length: 8
-          tag-latest: false
+          tag-latest: true
           registry: ${{ env.REGISTRY }}
           workload-identity-provider: "${{ secrets.GCP_PRD_GITHUB_WIF }}"
-          service-account: "${{ secrets.GCP_STG_GITHUB_SA_DOCKER_REGISTRY }}"
+          service-account: "${{ secrets.GCP_PRD_GITHUB_SA_DOCKER_REGISTRY }}"
           cache-key: ${{ env.IMAGE_NAME }}-cache
 
   deploy:
@@ -51,7 +47,6 @@ jobs:
       id-token: write
       contents: write
     runs-on: ubuntu-22.04
-    if: github.ref_name == github.event.repository.default_branch
     strategy:
       fail-fast: false
       matrix:
@@ -60,10 +55,10 @@ jobs:
     env:
       APP_NAME: ${{ matrix.application }}
       Z_ENV: z.yaml
-      Z_SERVICE_ACCOUNT: ${{ secrets.GCP_STG_GITHUB_SA_K8S_DEPLOY }}
-      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN_STG }}
+      Z_SERVICE_ACCOUNT: ${{ secrets.GCP_PRD_GITHUB_SA_K8S_DEPLOY }}
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN_PRD }}
       GITHUB_PAT: ${{ secrets.GH_PAT }}
-      Z_IMAGE: asia-docker.pkg.dev/prj-d-devops-services-4dgwlsse/zilliqa-private/z:latest
+      Z_IMAGE: asia-docker.pkg.dev/prj-p-devops-services-tvwmrf63/zilliqa-private/z:latest
       REGISTRY: asia-docker.pkg.dev
     steps:
       - name: Checkout repository
