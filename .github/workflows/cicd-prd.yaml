@@ -54,7 +54,7 @@ jobs:
           - insights-mcp-server
     env:
       APP_NAME: ${{ matrix.application }}
-      Z_ENV: z.yaml
+      Z_ENV: infra/live/gcp/production/prj-p-prod-apps/z_ase1.yaml
       Z_SERVICE_ACCOUNT: ${{ secrets.GCP_PRD_GITHUB_SA_K8S_DEPLOY }}
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN_PRD }}
       GITHUB_PAT: ${{ secrets.GH_PAT }}
