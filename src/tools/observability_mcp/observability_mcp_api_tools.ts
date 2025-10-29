@@ -21,7 +21,7 @@ export async function getValidators(): Promise<{ name: string; public_key: strin
     const result = await withMcpClient(async (mcpClient) => {
         // We query for the last known value of the validator metric over a wide time range.
         const end = new Date();
-        const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+        const start = new Date(end.getTime() - 24 * 60 * 60 * 1000);
 
         const toolArguments = {
             name: `projects/${GCP_PROJECT_ID}`,
@@ -34,7 +34,7 @@ export async function getValidators(): Promise<{ name: string; public_key: strin
             // We only need the latest point for each validator series.
             aggregation: {
                 alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
-                perSeriesAligner: 'ALIGN_MEAN',
+                perSeriesAligner: 'ALIGN_NEXT_OLDER',
             },
         };
 

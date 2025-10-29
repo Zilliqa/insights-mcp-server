@@ -1,19 +1,26 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+// @ts-ignore (Assuming this is a local file)
 import { registerTools } from './tools/registration.js';
+// @ts-ignore (Assuming this is a local file)
 import pkg from '../package.json' with { type: 'json' };
 
-// --- HTTP Streamable Imports and Configuration (Minimal Changes) ---
+// --- HTTP Streamable Imports and Configuration ---
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { Request, Response } from "express";
 import cors from "cors";
 
+// --- ADDED: Imports for session management ---
+import { randomUUID } from "node:crypto";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+
 // HTTP Config
 const PORT = process.env.PORT || 3001;
-const HOST = '0.0.0.0';
+const HOST = process.env.HOST || '0.0.0.0';
 // ------------------------------------------------------------------
 
 // Create server instance
+// This is correct: we create ONE server and connect multiple transports to it.
 const getServer = (): McpServer => {
     const server = new McpServer({
         name: 'insights-mcp-server',
@@ -34,104 +41,133 @@ async function main() {
         // HTTP Streamable Transport Mode
         console.error(`Starting EVM MCP Server on ${HOST}:${PORT} with Streamable HTTP transport`);
 
+        // --- ADDED: Map to store transports by session ID ---
+        const transports: Record<string, StreamableHTTPServerTransport> = {};
+
         // Setup Express
         const app = express();
         app.use(express.json());
         app.use(cors({
             origin: '*',
-            methods: ['GET', 'POST', 'OPTIONS'],
-            allowedHeaders: ['Content-Type', 'Authorization'],
+            methods: ['GET', 'POST', 'OPTIONS', 'DELETE'], // Added DELETE
+            // --- FIXED: Allow and Expose mcp-session-id ---
+            allowedHeaders: ['Content-Type', 'Authorization', 'mcp-session-id'],
             credentials: true,
-            exposedHeaders: ['Content-Type', 'Access-Control-Allow-Origin']
+            exposedHeaders: ['Content-Type', 'Access-Control-Allow-Origin', 'mcp-session-id']
         }));
 
         // Add OPTIONS handling for preflight requests
         app.options(/\/.*/, cors());
 
+        // --- REMOVED: Old single-transport logic ---
+        // We no longer create one transport here.
+
+
         // Health check endpoint
         app.get("/health", (req: Request, res: Response) => {
             res.json({
                 status: "ok",
-                server: "initialized" // Assume initialized since it's running
+                server: "initialized",
+                active_sessions: Object.keys(transports).length
             });
         });
 
-        // Endpoint for StreamableHTTP connection (GET)
-        // @ts-ignore
-        app.get('/mcp', (req: Request, res: Response) => {
-            console.error(`Received GET connection request from ${req.ip}`);
-            
-            // Server MUST either return 'text/event-stream' or 405 Method Not Allowed.
-            res.writeHead(200, {
-                'Content-Type': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            });
-            
-            // Handle client disconnect
-            req.on('close', () => {
-                console.error('Connection closed on GET /mcp');
-            });
-            
-            // The StreamableHTTPServerTransport isn't designed to handle 
-            // the bare GET stream for server-initiated messages in a stateless way
-            // and this basic implementation doesn't use session management.
-            // For a complete implementation, a stateful transport would be required 
-            // to connect the bare GET stream to the server. 
-            // For minimal implementation, we simply keep it open as a placeholder 
-            // for the client to open an SSE stream.
-            // This basic server assumes that all operations happen via POST.
-        });
+        
+        // --- REMOVED: Old app.all('/mcp', ...) handler ---
 
-        // Main MCP endpoint - stateless mode (POST)
+
+        // --- ADDED: POST handler for client-to-server messages ---
         // @ts-ignore
         app.post('/mcp', async (req: Request, res: Response) => {
-            console.error(`Received POST MCP request from ${req.ip}`);
-            
-            try {
-                // Create a new transport for each request (stateless mode)
-                const transport = new StreamableHTTPServerTransport({
-                    sessionIdGenerator: undefined, // Stateless mode
-                    enableJsonResponse: false, // Use default behavior (SSE or JSON based on request)
-                });
+            const sessionId = req.headers['mcp-session-id'] as string | undefined;
+            let transport: StreamableHTTPServerTransport | undefined;
+
+            if (sessionId && transports[sessionId]) {
+                // Session exists, reuse transport
+                console.error(`[${sessionId}] Reusing transport for POST`);
+                transport = transports[sessionId];
+            } else if (!sessionId && isInitializeRequest(req.body)) {
+                // This is a new session
+                console.error(`[NEW] Received initialize request`);
                 
-                // Handle request close
-                res.on('close', () => {
-                    console.error('Request closed');
-                    transport.close();
+                // Create a NEW transport
+                transport = new StreamableHTTPServerTransport({
+                    // --- FIXED: This is required by the type ---
+                    sessionIdGenerator: () => randomUUID(),
+                    enableJsonResponse: false,
+                    onsessioninitialized: (newSessionId) => {
+                        // Store the transport by session ID
+                        console.error(`[${newSessionId}] Session initialized, storing transport.`);
+                        transports[newSessionId] = transport!;
+                    },
                 });
-                
-                // Connect transport to server
+
+                // Clean up transport when it closes
+                transport.onclose = () => {
+                    if (transport!.sessionId) {
+                        console.error(`[${transport!.sessionId}] Transport closed, cleaning up.`);
+                        delete transports[transport!.sessionId];
+                    }
+                };
+
+                // Connect the main server to this new transport
                 await server.connect(transport);
-                
-                // Handle the request
+
+            } else {
+                // Invalid request
+                console.error(`[INVALID] Bad Request: No valid session ID or init request.`);
+                res.status(400).json({
+                    jsonrpc: "2.0",
+                    error: {
+                        code: -32000,
+                        message: "Bad Request: No valid session ID provided or not an initialize request",
+                    },
+                    id: (req.body as any)?.id || null,
+                });
+                return;
+            }
+
+            // Handle the request (either new or existing)
+            try {
                 await transport.handleRequest(req, res, req.body);
-                
             } catch (error) {
-                console.error('Error handling MCP request:', error);
-                if (!res.headersSent) {
-                    res.status(500).json({
-                        jsonrpc: '2.0',
-                        error: {
-                            code: -32603,
-                            message: 'Internal server error',
-                            data: error instanceof Error ? error.message : String(error)
-                        },
-                        id: (req.body as any)?.id || null,
-                    });
-                }
+                console.error(`[${transport.sessionId || 'UNKNOWN'}] Error handling POST request:`, error);
+                // Handle or log error
             }
         });
 
+        // --- ADDED: GET handler for server-to-client (SSE) streams ---
+        // @ts-ignore
+        const handleGetOrDelete = async (req: Request, res: Response) => {
+            const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+            if (!sessionId || !transports[sessionId]) {
+                console.error(`[INVALID] Invalid or missing session ID for ${req.method} request.`);
+                res.status(400).send("Invalid or missing session ID");
+                return;
+            }
+
+            console.error(`[${sessionId}] Reusing transport for ${req.method} (SSE)`);
+            const transport = transports[sessionId];
+            
+            try {
+                await transport.handleRequest(req, res);
+            } catch (error) {
+                console.error(`[${sessionId}] Error handling ${req.method} request:`, error);
+            }
+        };
+
+        app.get("/mcp", handleGetOrDelete);
+        app.delete("/mcp", handleGetOrDelete);
+
+
         // Start the HTTP server
-        const httpServer = app.listen(Number(PORT), HOST, (error) => {
+        const httpServer = app.listen(Number(PORT), HOST, (error?: any) => { // Added type for error
             if (error) {
                 console.error('Failed to start server:', error);
                 process.exit(1);
             }
-            console.error(`EVM MCP Server listening on port ${PORT}`);
+            console.error(`Insights MCP Server listening on port ${PORT}`);
             console.error(`Endpoint: http://${HOST}:${PORT}/mcp`);
             console.error(`Health: http://${HOST}:${PORT}/health`);
         });
@@ -139,7 +175,19 @@ async function main() {
         // Handle graceful shutdown
         const shutdown = () => {
             console.error('\nReceived signal, shutting down gracefully...');
-            server.close();
+            
+            // --- FIXED: Close all active transports ---
+            console.error(`Closing ${Object.keys(transports).length} active transports...`);
+            for (const sessionId in transports) {
+                try {
+                    transports[sessionId].close();
+                } catch (e) {
+                    console.error(`Error closing transport ${sessionId}:`, e);
+                }
+            }
+
+            server.close(); // Close the main server
+            
             httpServer.close(() => {
                 console.error('HTTP server closed');
                 process.exit(0);
