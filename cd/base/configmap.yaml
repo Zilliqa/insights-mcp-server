@@ -7,3 +7,4 @@ metadata:
     app.kubernetes.io/name: insights-mcp-server
 data:
   PORT: "3001"
+  HOST: "0.0.0.0"
