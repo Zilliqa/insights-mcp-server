@@ -1,17 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from './tools/registration.js';
 import pkg from '../package.json' with { type: 'json' };
-
-// --- HTTP Streamable Imports and Configuration (Minimal Changes) ---
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { Request, Response } from "express";
 import cors from "cors";
 
 // HTTP Config
 const PORT = process.env.PORT || 3001;
 const HOST = '0.0.0.0';
-// ------------------------------------------------------------------
 
 // Create server instance
 const getServer = (): McpServer => {
@@ -36,6 +33,7 @@ async function main() {
 
         // Setup Express
         const app = express();
+        app.set('trust proxy', true); // Enable trust proxy for correct client IP
         app.use(express.json());
         app.use(cors({
             origin: '*',
@@ -52,15 +50,16 @@ async function main() {
         app.get("/health", (req: Request, res: Response) => {
             res.json({
                 status: "ok",
-                server: "initialized" // Assume initialized since it's running
+                server: "initialized"
             });
         });
 
         // Endpoint for StreamableHTTP connection (GET)
-        // @ts-ignore
         app.get('/mcp', (req: Request, res: Response) => {
-            console.error(`Received GET connection request from ${req.ip}`);
-            
+            // Get real client IP (supports proxies/load balancers)
+            const realIp = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.ip;
+            console.error(`Received GET connection request from ${realIp}`);
+
             // Server MUST either return 'text/event-stream' or 405 Method Not Allowed.
             res.writeHead(200, {
                 'Content-Type': 'text/event-stream',
@@ -69,37 +68,24 @@ async function main() {
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization',
             });
-            
-            // Handle client disconnect
-            req.on('close', () => {
-                console.error('Connection closed on GET /mcp');
-            });
-            
-            // The StreamableHTTPServerTransport isn't designed to handle 
-            // the bare GET stream for server-initiated messages in a stateless way
-            // and this basic implementation doesn't use session management.
-            // For a complete implementation, a stateful transport would be required 
-            // to connect the bare GET stream to the server. 
-            // For minimal implementation, we simply keep it open as a placeholder 
-            // for the client to open an SSE stream.
-            // This basic server assumes that all operations happen via POST.
+
+            res.end();
         });
 
         // Main MCP endpoint - stateless mode (POST)
-        // @ts-ignore
         app.post('/mcp', async (req: Request, res: Response) => {
-            console.error(`Received POST MCP request from ${req.ip}`);
+            const realIp = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.ip;
+            console.error(`Received POST MCP request from ${realIp}`);
             
             try {
                 // Create a new transport for each request (stateless mode)
                 const transport = new StreamableHTTPServerTransport({
                     sessionIdGenerator: undefined, // Stateless mode
-                    enableJsonResponse: false, // Use default behavior (SSE or JSON based on request)
+                    enableJsonResponse: false,
                 });
                 
                 // Handle request close
                 res.on('close', () => {
-                    console.error('Request closed');
                     transport.close();
                 });
                 
@@ -138,7 +124,6 @@ async function main() {
 
         // Handle graceful shutdown
         const shutdown = () => {
-            console.error('\nReceived signal, shutting down gracefully...');
             server.close();
             httpServer.close(() => {
                 console.error('HTTP server closed');
@@ -157,12 +142,10 @@ async function main() {
         
         // Handle graceful shutdown for stdio mode
         process.on('SIGINT', () => {
-            console.error('\nReceived SIGINT, shutting down gracefully...');
             server.close();
             process.exit(0);
         });
         process.on('SIGTERM', () => {
-            console.error('\nReceived SIGTERM, shutting down gracefully...');
             server.close();
             process.exit(0);
         });
