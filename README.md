@@ -13,7 +13,7 @@ You can ask your MCP client natural language questions about the Zilliqa validat
 
 - **"What is the zil address for Huobi?"**
 - **"What is the zil stake for Binance in October 2025?"**
-- **"How reliable was Zillet at proposing blocks last week?."**
+- **"How reliable was Zillet at proposing blocks last week?"**
 - **"What were the total ZIL rewards for Moonlet yesterday?"**
 
 Your MCP client will translate these questions into the appropriate tool calls to fetch the data from the MCP server.
