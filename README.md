@@ -22,6 +22,9 @@ Your MCP client will translate these questions into the appropriate tool calls t
 
 This server exposes several tools that query validator performance and status metrics. These tools act as a proxy, connecting to the downstream `observability-mcp` server, which is part of the [`gcloud-mcp`](https://github.com/Zilliqa/gcloud-mcp), to retrieve data from Google Cloud Monitoring.
 
+-   **`listValidators()`**
+  -   Lists all known validators and their metadata: `name`, `public_key`, `address`, and `zil_address`.
+
 -   **`getTotalValidatorEarnings(validator, startTime?, endTime?)`**
     -   Retrieves the total ZIL rewards earned by a specific validator within a given time frame. Defaults to the last hour if no time is specified.
 
@@ -86,6 +89,8 @@ Add this configuration in the LLM local settings to test the MCP server. This is
   }
 }
 ```
+
+**Note:** The Zilliqa Insights MCP server connects to an instance of the [gcloud MCP server](https://github.com/Zilliqa/gcloud-mcp) referred in the OBSERVABILITY_MCP_URL variable to retrieve the validators data. These observability metrics are restricted and not publicly available.
 
 ## Deployment
 

@@ -62,6 +62,36 @@ function findValidator(identifier: string, validators: ValidatorData[]) {
 
 export const registerTools = (server: McpServer): void => {
   server.tool(
+    "list_validators",
+    "Lists all known validators with their name, public_key, address, and zil_address.",
+    {},
+    async () => {
+      const validators = await getValidators();
+      if (!Array.isArray(validators) || validators.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: "failed",
+                reason: "Could not fetch validator list from the monitoring service.",
+              }),
+            },
+          ],
+        };
+      }
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ status: "success", data: validators }),
+          },
+        ],
+      };
+    }
+  );
+
+  server.tool(
     "get_validator_info",
     "Gets all available information for a validator (name, public key, address, zil_address) by providing any one of those identifiers.",
     {

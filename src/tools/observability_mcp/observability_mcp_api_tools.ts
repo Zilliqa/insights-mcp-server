@@ -489,7 +489,7 @@ async function withMcpClient<T>(
     action: (client: Client) => Promise<T>
 ): Promise<{ content: any[] }> {
     // Configuration for downstream MCP client
-    const subMcpUrl = process.env.OBSERVABILITY_MCP_URL;
+    const subMcpUrl = process.env.OBSERVABILITY_MCP_URL || "http://localhost:3000/mcp" ;
     const subMcpCommand = process.env.OBSERVABILITY_MCP_COMMAND || "node";
     const subMcpArgs = [process.env.OBSERVABILITY_MCP_ARGS || "../gcloud-mcp/packages/observability-mcp/dist/bundle.js"];
 
