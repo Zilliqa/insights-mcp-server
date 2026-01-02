@@ -7,6 +7,10 @@ import {
   getProposerSuccessRate,
   getCosignerSuccessRate,
   getValidators,
+  getTopValidatorsByEarnings,
+  getTopValidatorsByStake,
+  getTopProposerSuccessRate,
+  getTopCosignerSuccessRate,
 } from './index.js';
 
 type ToolHandler<T extends { validator: string }> = (
@@ -163,6 +167,62 @@ export const registerTools = (server: McpServer): void => {
     withValidatorResolution(async (params, validatorInfo) => {
       return getCosignerSuccessRate(validatorInfo.public_key, params.startTime, params.endTime);
     }),
+  );
+
+  server.tool(
+    "get_top_validators_by_earnings",
+    "Gets the top N validators with the highest total earnings within a time frame. Defaults to the last hour and top 5.",
+    {
+      startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
+      endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
+      limit: z.number().int().positive().describe("How many top validators to return. Defaults to 5.").optional(),
+    },
+    async (params) => {
+      const limit = typeof params.limit === 'number' ? params.limit : 5;
+      return getTopValidatorsByEarnings(params.startTime, params.endTime, limit);
+    },
+  );
+
+  server.tool(
+    "get_top_validators_by_stake",
+    "Gets the top N validators with the highest current stake within a time frame. Defaults to the last hour and top 5.",
+    {
+      startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
+      endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
+      limit: z.number().int().positive().describe("How many top validators to return. Defaults to 5.").optional(),
+    },
+    async (params) => {
+      const limit = typeof params.limit === 'number' ? params.limit : 5;
+      return getTopValidatorsByStake(params.startTime, params.endTime, limit);
+    },
+  );
+
+  server.tool(
+    "get_top_proposer_success_rate",
+    "Gets the top N validators with the highest proposer success rate within a time frame. Defaults to the last hour and top 5.",
+    {
+      startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
+      endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
+      limit: z.number().int().positive().describe("How many top validators to return. Defaults to 5.").optional(),
+    },
+    async (params) => {
+      const limit = typeof params.limit === 'number' ? params.limit : 5;
+      return getTopProposerSuccessRate(params.startTime, params.endTime, limit);
+    },
+  );
+
+  server.tool(
+    "get_top_cosigner_success_rate",
+    "Gets the top N validators with the highest cosigner success rate within a time frame. Defaults to the last hour and top 5.",
+    {
+      startTime: z.string().describe("The start of the time range in ISO 8601 format. Defaults to 1 hour ago if not provided.").optional(),
+      endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
+      limit: z.number().int().positive().describe("How many top validators to return. Defaults to 5.").optional(),
+    },
+    async (params) => {
+      const limit = typeof params.limit === 'number' ? params.limit : 5;
+      return getTopCosignerSuccessRate(params.startTime, params.endTime, limit);
+    },
   );
 
 };

@@ -15,6 +15,8 @@ You can ask your MCP client natural language questions about the Zilliqa validat
 - **"What is the zil stake for Binance in October 2025?"**
 - **"How reliable was Zillet at proposing blocks last week?"**
 - **"What were the total ZIL rewards for Moonlet yesterday?"**
+- **give me the top 10 validators with more stake**
+- **give me the top 10 validators with more rewards**
 
 Your MCP client will translate these questions into the appropriate tool calls to fetch the data from the MCP server.
 
@@ -39,6 +41,18 @@ This server exposes several tools that query validator performance and status me
 
 -   **`getCosignerSuccessRate(public_key, startTime?, endTime?)`**
     -   Measures the validator's success rate for cosigning (attesting to) blocks proposed by others. This demonstrates consistent uptime and connectivity.
+
+-   **`getTopValidatorsByEarnings(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by total ZIL earnings within a given time frame. Defaults to the last hour and top 5 when not specified.
+
+-   **`getTopValidatorsByStake(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by current delegated stake (GAUGE metric, latest value per validator). Defaults to the last hour and top 5.
+
+-   **`getTopProposerSuccessRate(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by proposer success rate over a time frame (successful proposals divided by total proposals). Defaults to the last hour and top 5.
+
+-   **`getTopCosignerSuccessRate(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by cosigner success rate over a time frame (successful cosignatures divided by total cosignatures). Defaults to the last hour and top 5.
 
 ## Development
 

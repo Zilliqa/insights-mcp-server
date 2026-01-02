@@ -480,6 +480,420 @@ function parseTimeSeriesLatestValue(content: unknown): number {
 }
 
 /**
+ * Parses time series content and returns sums grouped by a metric label.
+ * Useful for aggregating totals per validator address over a time range.
+ * @param content The `content` array from a toolCallResult.
+ * @param labelKey The label key to group by (e.g., 'address').
+ * @returns A record mapping label value to the summed numeric value.
+ */
+function parseTimeSeriesGroupSum(
+    content: unknown,
+    labelKey: string
+): Record<string, number> {
+    const totals: Record<string, number> = {};
+    if (Array.isArray(content) && content.length > 0 && typeof content[0].text === 'string') {
+        try {
+            const timeSeriesData = JSON.parse(content[0].text);
+            if (Array.isArray(timeSeriesData) && timeSeriesData.length > 0) {
+                for (const ts of timeSeriesData) {
+                    const labels = ts?.metric?.labels || {};
+                    const groupValue: string | undefined = labels[labelKey];
+                    if (!groupValue) {
+                        continue;
+                    }
+                    let value = 0;
+                    if (ts?.points?.[0]?.value) {
+                        const vc = ts.points[0].value;
+                        if (typeof vc.doubleValue === 'number') {
+                            value = vc.doubleValue;
+                        } else if (typeof vc.int64Value !== 'undefined') {
+                            value = Number(vc.int64Value);
+                        }
+                    }
+                    totals[groupValue] = (totals[groupValue] || 0) + value;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to parse grouped time series data from sub-MCP:", e);
+        }
+    }
+    return totals;
+}
+
+/**
+ * Parses time series content and returns the latest value per group label.
+ * Designed for GAUGE metrics (e.g., stake) to avoid summing duplicates.
+ * @param content The `content` array from a toolCallResult.
+ * @param labelKey The label key to group by (e.g., 'validator').
+ * @returns A record mapping label value to the latest numeric value.
+ */
+function parseTimeSeriesGroupLatest(
+    content: unknown,
+    labelKey: string
+): Record<string, number> {
+    const latest: Record<string, number> = {};
+    if (Array.isArray(content) && content.length > 0 && typeof content[0].text === 'string') {
+        try {
+            const timeSeriesData = JSON.parse(content[0].text);
+            if (Array.isArray(timeSeriesData) && timeSeriesData.length > 0) {
+                for (const ts of timeSeriesData) {
+                    const labels = ts?.metric?.labels || {};
+                    const groupValue: string | undefined = labels[labelKey];
+                    if (!groupValue) continue;
+                    if (latest[groupValue] !== undefined) continue; // first record wins
+                    const points = Array.isArray(ts?.points) ? ts.points : [];
+                    const firstPoint = points.length > 0 ? points[0] : undefined; // Cloud Monitoring usually orders latest first
+                    if (firstPoint?.value) {
+                        const vc = firstPoint.value;
+                        if (typeof vc.doubleValue === 'number') {
+                            latest[groupValue] = vc.doubleValue;
+                        } else if (typeof vc.int64Value !== 'undefined') {
+                            latest[groupValue] = Number(vc.int64Value);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to parse grouped-latest time series data from sub-MCP:", e);
+        }
+    }
+    return latest;
+}
+
+/**
+ * Retrieves the top validators by current stake within a time frame.
+ * Aggregates GAUGE values across all validators and returns the top N.
+ */
+export async function getTopValidatorsByStake(
+    startTime?: string,
+    endTime?: string,
+    limit: number = 5,
+): Promise<{ content: ({ type: 'text', text: string })[] }> {
+    const end = endTime ? new Date(endTime) : new Date();
+    const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000); // default last 1 hour
+    let timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
+    const queryStartTime = start.toISOString();
+    const queryEndTime = end.toISOString();
+
+    // Fetch validator metadata keyed by public_key for enrichment
+    const validatorMeta = await getValidators();
+    const byPubKey: Record<string, { name?: string; zil_address?: string; address?: string } > = {};
+    for (const v of validatorMeta) {
+        byPubKey[v.public_key] = { name: v.name, zil_address: v.zil_address, address: v.address };
+    }
+
+    return withMcpClient(async (mcpClient) => {
+        const queryStake = async (fromIso: string, toIso: string) => {
+            const toolArguments = {
+                name: `projects/${GCP_PROJECT_ID}`,
+                filter: `metric.type = \"${METRIC_TYPE_STAKE}\" AND metric.labels.validator != \"\"`,
+                interval: {
+                    startTime: fromIso,
+                    endTime: toIso,
+                },
+            };
+            const toolCallResult = await mcpClient.callTool({
+                name: 'list_time_series',
+                arguments: toolArguments,
+            });
+            return parseTimeSeriesGroupLatest(toolCallResult.content, 'validator');
+        };
+
+        let latestByValidator = await queryStake(queryStartTime, queryEndTime);
+
+        // If fewer than requested and no explicit timeframe provided, widen to 24h to include more validators.
+        if ((!startTime && !endTime) && Object.keys(latestByValidator).length < limit) {
+            const expandedStart = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+            const expandedStartIso = expandedStart.toISOString();
+            const widened = await queryStake(expandedStartIso, queryEndTime);
+            // Merge, preferring the 1h latest where present
+            latestByValidator = { ...widened, ...latestByValidator };
+            timeFrameText = " in the last 24 hours";
+        }
+
+        // Deep fallback: if still fewer than requested, fetch stakes per validator public key.
+        if (Object.keys(latestByValidator).length < limit) {
+            const needed = limit - Object.keys(latestByValidator).length;
+            const pubKeys = validatorMeta.map(v => v.public_key);
+
+            const queryStakeForValidator = async (pubKey: string, fromIso: string, toIso: string) => {
+                const toolArguments = {
+                    name: `projects/${GCP_PROJECT_ID}`,
+                    filter: `metric.type = \"${METRIC_TYPE_STAKE}\" AND metric.labels.validator = \"${pubKey}\"`,
+                    interval: { startTime: fromIso, endTime: toIso },
+                };
+                const toolCallResult = await mcpClient.callTool({ name: 'list_time_series', arguments: toolArguments });
+                return parseTimeSeriesLatestValue(toolCallResult.content);
+            };
+
+            const stakeEntries: Array<{ public_key: string; amount: number }> = [];
+            // Use expanded window for better coverage
+            const fromIso = new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString();
+            for (const pk of pubKeys) {
+                if (latestByValidator[pk] !== undefined) continue;
+                try {
+                    const amt = await queryStakeForValidator(pk, fromIso, queryEndTime);
+                    if (amt && amt > 0) {
+                        stakeEntries.push({ public_key: pk, amount: amt });
+                    }
+                } catch {
+                    // ignore individual failures
+                }
+            }
+
+            // Merge fallbacks
+            for (const e of stakeEntries) {
+                latestByValidator[e.public_key] = e.amount;
+            }
+        }
+        const ranked = Object.entries(latestByValidator)
+            .map(([public_key, total_stake_zil]) => ({
+                public_key,
+                total_stake_zil,
+                name: byPubKey[public_key]?.name || undefined,
+                zil_address: byPubKey[public_key]?.zil_address || undefined,
+                address: byPubKey[public_key]?.address || undefined,
+            }))
+            .sort((a, b) => b.total_stake_zil - a.total_stake_zil)
+            .slice(0, Math.max(1, limit));
+
+        const response = {
+            status: "success",
+            data: {
+                top_validators: ranked,
+                message: `Top ${ranked.length}${ranked.length < limit ? ` of requested ${limit}` : ''} validators by stake${timeFrameText}.`,
+            },
+        };
+
+        return {
+            type: 'text',
+            text: JSON.stringify(response),
+        };
+    });
+}
+
+/**
+ * Retrieves the top validators by proposer success rate within a time frame.
+ * Computes total proposals and successful proposals per validator, then ranks by success rate.
+ */
+export async function getTopProposerSuccessRate(
+    startTime?: string,
+    endTime?: string,
+    limit: number = 5,
+): Promise<{ content: ({ type: 'text', text: string })[] }> {
+    const end = endTime ? new Date(endTime) : new Date();
+    const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000);
+    let timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
+    const queryStartTime = start.toISOString();
+    const queryEndTime = end.toISOString();
+
+    // Metadata keyed by public_key
+    const validatorMeta = await getValidators();
+    const byPubKey: Record<string, { name?: string; zil_address?: string; address?: string } > = {};
+    for (const v of validatorMeta) {
+        byPubKey[v.public_key] = { name: v.name, zil_address: v.zil_address, address: v.address };
+    }
+
+    return withMcpClient(async (mcpClient) => {
+        const queryGroupedDelta = async (statusFilter: string, fromIso: string, toIso: string) => {
+            const filter = `metric.type = \"${METRIC_TYPE_PROPOSALS}\" AND metric.labels.validator != "" ${statusFilter}`;
+            const toolArguments = {
+                name: `projects/${GCP_PROJECT_ID}`,
+                filter,
+                interval: { startTime: fromIso, endTime: toIso },
+                aggregation: {
+                    alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
+                    perSeriesAligner: 'ALIGN_DELTA',
+                },
+            };
+            const toolCallResult = await mcpClient.callTool({ name: 'list_time_series', arguments: toolArguments });
+            return parseTimeSeriesGroupSum(toolCallResult.content, 'validator');
+        };
+
+        // Base window
+        let totals = await queryGroupedDelta('', queryStartTime, queryEndTime);
+        let proposed = await queryGroupedDelta('AND metric.labels.status = "proposed"', queryStartTime, queryEndTime);
+        let missedNextMissed = await queryGroupedDelta('AND metric.labels.status = "missed_next_missed"', queryStartTime, queryEndTime);
+
+        // Fallback: widen to 24h if fewer than requested and no explicit timeframe
+        if ((!startTime && !endTime) && Object.keys(totals).length < limit) {
+            const expandedStartIso = new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString();
+            totals = await queryGroupedDelta('', expandedStartIso, queryEndTime);
+            proposed = await queryGroupedDelta('AND metric.labels.status = "proposed"', expandedStartIso, queryEndTime);
+            missedNextMissed = await queryGroupedDelta('AND metric.labels.status = "missed_next_missed"', expandedStartIso, queryEndTime);
+            timeFrameText = " in the last 24 hours";
+        }
+
+        const entries = Object.keys(totals).map((public_key) => {
+            const total = totals[public_key] || 0;
+            const success = (proposed[public_key] || 0) + (missedNextMissed[public_key] || 0);
+            const rate = total > 0 ? (success / total) * 100 : undefined;
+            return {
+                public_key,
+                proposer_success_rate: rate !== undefined ? `${rate.toFixed(2)}%` : 'N/A (0 proposals attempted)',
+                name: byPubKey[public_key]?.name,
+                zil_address: byPubKey[public_key]?.zil_address,
+                address: byPubKey[public_key]?.address,
+            };
+        }).filter(e => e.proposer_success_rate !== 'N/A (0 proposals attempted)')
+          .sort((a, b) => parseFloat(b.proposer_success_rate) - parseFloat(a.proposer_success_rate))
+          .slice(0, Math.max(1, limit));
+
+        const response = {
+            status: "success",
+            data: {
+                top_validators: entries,
+                message: `Top ${entries.length}${entries.length < limit ? ` of requested ${limit}` : ''} validators by proposer success rate${timeFrameText}.`,
+            },
+        };
+
+        return { type: 'text', text: JSON.stringify(response) };
+    });
+}
+
+/**
+ * Retrieves the top validators by cosigner success rate within a time frame.
+ * Computes total cosignatures and successful cosignatures per validator, then ranks by success rate.
+ */
+export async function getTopCosignerSuccessRate(
+    startTime?: string,
+    endTime?: string,
+    limit: number = 5,
+): Promise<{ content: ({ type: 'text', text: string })[] }> {
+    const end = endTime ? new Date(endTime) : new Date();
+    const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000);
+    let timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
+    const queryStartTime = start.toISOString();
+    const queryEndTime = end.toISOString();
+
+    const validatorMeta = await getValidators();
+    const byPubKey: Record<string, { name?: string; zil_address?: string; address?: string } > = {};
+    for (const v of validatorMeta) {
+        byPubKey[v.public_key] = { name: v.name, zil_address: v.zil_address, address: v.address };
+    }
+
+    return withMcpClient(async (mcpClient) => {
+        const queryGroupedDelta = async (cosignedFilter: string, fromIso: string, toIso: string) => {
+            const filter = `metric.type = \"${METRIC_TYPE_COSIGNATURES}\" AND metric.labels.validator != "" ${cosignedFilter}`;
+            const toolArguments = {
+                name: `projects/${GCP_PROJECT_ID}`,
+                filter,
+                interval: { startTime: fromIso, endTime: toIso },
+                aggregation: {
+                    alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
+                    perSeriesAligner: 'ALIGN_DELTA',
+                },
+            };
+            const toolCallResult = await mcpClient.callTool({ name: 'list_time_series', arguments: toolArguments });
+            return parseTimeSeriesGroupSum(toolCallResult.content, 'validator');
+        };
+
+        let totals = await queryGroupedDelta('', queryStartTime, queryEndTime);
+        let successful = await queryGroupedDelta('AND metric.labels.cosigned = "true"', queryStartTime, queryEndTime);
+
+        if ((!startTime && !endTime) && Object.keys(totals).length < limit) {
+            const expandedStartIso = new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString();
+            totals = await queryGroupedDelta('', expandedStartIso, queryEndTime);
+            successful = await queryGroupedDelta('AND metric.labels.cosigned = "true"', expandedStartIso, queryEndTime);
+            timeFrameText = " in the last 24 hours";
+        }
+
+        const entries = Object.keys(totals).map((public_key) => {
+            const total = totals[public_key] || 0;
+            const ok = successful[public_key] || 0;
+            const rate = total > 0 ? (ok / total) * 100 : undefined;
+            return {
+                public_key,
+                cosigner_success_rate: rate !== undefined ? `${rate.toFixed(2)}%` : 'N/A (0 cosignatures attempted)',
+                name: byPubKey[public_key]?.name,
+                zil_address: byPubKey[public_key]?.zil_address,
+                address: byPubKey[public_key]?.address,
+            };
+        }).filter(e => e.cosigner_success_rate !== 'N/A (0 cosignatures attempted)')
+          .sort((a, b) => parseFloat(b.cosigner_success_rate) - parseFloat(a.cosigner_success_rate))
+          .slice(0, Math.max(1, limit));
+
+        const response = {
+            status: "success",
+            data: {
+                top_validators: entries,
+                message: `Top ${entries.length}${entries.length < limit ? ` of requested ${limit}` : ''} validators by cosigner success rate${timeFrameText}.`,
+            },
+        };
+
+        return { type: 'text', text: JSON.stringify(response) };
+    });
+}
+
+/**
+ * Retrieves the top validators by total earnings within a time frame.
+ * Aggregates earnings across all validators and returns the top N.
+ */
+export async function getTopValidatorsByEarnings(
+    startTime?: string,
+    endTime?: string,
+    limit: number = 5,
+): Promise<{ content: ({ type: 'text', text: string })[] }> {
+    const end = endTime ? new Date(endTime) : new Date();
+    const start = startTime ? new Date(startTime) : new Date(end.getTime() - 60 * 60 * 1000);
+    const timeFrameText = !startTime && !endTime ? " in the last hour" : ` between ${start.toISOString()} and ${end.toISOString()}`;
+    const queryStartTime = start.toISOString();
+    const queryEndTime = end.toISOString();
+
+    // Fetch validator metadata to enrich results (name, zil_address)
+    const validatorMeta = await getValidators();
+    const byAddress: Record<string, { name?: string; zil_address?: string; public_key?: string } > = {};
+    for (const v of validatorMeta) {
+        byAddress[v.address] = { name: v.name, zil_address: v.zil_address, public_key: v.public_key };
+    }
+
+    return withMcpClient(async (mcpClient) => {
+        const toolArguments = {
+            name: `projects/${GCP_PROJECT_ID}`,
+            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND resource.type = "gce_instance" AND resource.labels.instance_id = "${GCE_INSTANCE_ID}"`,
+            interval: {
+                startTime: queryStartTime,
+                endTime: queryEndTime,
+            },
+            aggregation: {
+                alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
+                perSeriesAligner: 'ALIGN_DELTA',
+            },
+        };
+
+        const toolCallResult = await mcpClient.callTool({
+            name: 'list_time_series',
+            arguments: toolArguments,
+        });
+
+        const totalsByAddress = parseTimeSeriesGroupSum(toolCallResult.content, 'address');
+        const ranked = Object.entries(totalsByAddress)
+            .map(([address, total_earnings_zil]) => ({
+                address,
+                total_earnings_zil,
+                name: byAddress[address]?.name || undefined,
+                zil_address: byAddress[address]?.zil_address || undefined,
+                public_key: byAddress[address]?.public_key || undefined,
+            }))
+            .sort((a, b) => b.total_earnings_zil - a.total_earnings_zil)
+            .slice(0, Math.max(1, limit));
+
+        const response = {
+            status: "success",
+            data: {
+                top_validators: ranked,
+                message: `Top ${ranked.length} validators by earnings${timeFrameText}.`,
+            },
+        };
+
+        return {
+            type: 'text',
+            text: JSON.stringify(response),
+        };
+    });
+}
+
+/**
  * A higher-order function that manages the lifecycle of an MCP client connection.
  * It handles client creation, connection, executing a provided action, and cleanup.
  * @param action A function that receives the connected MCP client and performs operations.
