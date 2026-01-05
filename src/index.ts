@@ -58,9 +58,10 @@ async function main() {
 
         // Endpoint for StreamableHTTP connection (GET)
         app.get('/mcp', (req: Request, res: Response) => {
-            // Get real client IP (supports proxies/load balancers)
-            const realIp = req.headers['x-forwarded-for']?.toString().split(',')[1]?.trim() || req.ip;
-            logger.debug(`Received GET connection request from ${realIp}`);
+            const xffHeader = req.headers['x-forwarded-for'];
+            const xffRaw = Array.isArray(xffHeader) ? xffHeader.join(',') : xffHeader?.toString() || '';
+            // Log only the header string as requested
+            logger.info(xffRaw);
 
             // Server MUST either return 'text/event-stream' or 405 Method Not Allowed.
             res.writeHead(200, {
@@ -76,7 +77,7 @@ async function main() {
 
         // Main MCP endpoint - stateless mode (POST)
         app.post('/mcp', async (req: Request, res: Response) => {
-            const realIp = req.headers['x-forwarded-for']?.toString().split(',')[1]?.trim() || req.ip;
+            const realIp = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.ip;
             logger.debug(`Received POST MCP request from ${realIp}`);
             
             try {
