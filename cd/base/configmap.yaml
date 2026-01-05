@@ -6,4 +6,5 @@ metadata:
   labels:
     app.kubernetes.io/name: insights-mcp-server
 data:
+  NODE_ENV: "production"
   PORT: "3001"

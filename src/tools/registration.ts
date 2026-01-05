@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import logger from '../utils/logger.js';
+import { getRequestContext } from '../utils/requestContext.js';
 import {
   getTotalValidatorEarnings,
   getValidatorEarningsBreakdown,
@@ -65,11 +67,17 @@ function findValidator(identifier: string, validators: ValidatorData[]) {
 }
 
 export const registerTools = (server: McpServer): void => {
+  const logToolInvocation = (tool: string, details?: Record<string, unknown>) => {
+    const ctx = getRequestContext();
+    logger.info({ tool, ip: ctx?.ip, ...details }, 'MCP tool invoked');
+  };
+
   server.tool(
     "list_validators",
     "Lists all known validators with their name, public_key, address, and zil_address.",
     {},
     async () => {
+      logToolInvocation('list_validators');
       const validators = await getValidators();
       if (!Array.isArray(validators) || validators.length === 0) {
         return {
@@ -102,6 +110,7 @@ export const registerTools = (server: McpServer): void => {
       validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
     },
     withValidatorResolution(async (params, validatorInfo) => {
+      logToolInvocation('get_validator_info', { validator: params.validator });
       return { content: [{ type: 'text', text: JSON.stringify({ status: "success", data: validatorInfo }) }] };
     })
   );
@@ -115,6 +124,7 @@ export const registerTools = (server: McpServer): void => {
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
     withValidatorResolution(async (params, validatorInfo) => {
+      logToolInvocation('get_total_validator_earnings', { validator: params.validator, startTime: params.startTime, endTime: params.endTime });
       return getTotalValidatorEarnings(validatorInfo.address, params.startTime, params.endTime);
     }),
   );
@@ -128,6 +138,7 @@ export const registerTools = (server: McpServer): void => {
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
     withValidatorResolution(async (params, validatorInfo) => {
+      logToolInvocation('get_validator_earnings_breakdown', { validator: params.validator, startTime: params.startTime, endTime: params.endTime });
       return getValidatorEarningsBreakdown(validatorInfo.address, params.startTime, params.endTime);
     }),
   );
@@ -139,6 +150,7 @@ export const registerTools = (server: McpServer): void => {
         validator: z.string().describe("The name, public key, address, or zil_address of the validator."),
     },
     withValidatorResolution(async (params, validatorInfo) => {
+      logToolInvocation('get_validator_stake', { validator: params.validator });
       return getValidatorStake(validatorInfo.public_key);
     }),
   );
@@ -152,6 +164,7 @@ export const registerTools = (server: McpServer): void => {
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
     withValidatorResolution(async (params, validatorInfo) => {
+      logToolInvocation('get_proposer_success_rate', { validator: params.validator, startTime: params.startTime, endTime: params.endTime });
       return getProposerSuccessRate(validatorInfo.public_key, params.startTime, params.endTime);
     }),
   );
@@ -165,6 +178,7 @@ export const registerTools = (server: McpServer): void => {
         endTime: z.string().describe("The end of the time range in ISO 8601 format. Defaults to the current time if not provided.").optional(),
     },
     withValidatorResolution(async (params, validatorInfo) => {
+      logToolInvocation('get_cosigner_success_rate', { validator: params.validator, startTime: params.startTime, endTime: params.endTime });
       return getCosignerSuccessRate(validatorInfo.public_key, params.startTime, params.endTime);
     }),
   );
@@ -179,6 +193,7 @@ export const registerTools = (server: McpServer): void => {
     },
     async (params) => {
       const limit = typeof params.limit === 'number' ? params.limit : 5;
+      logToolInvocation('get_top_validators_by_earnings', { startTime: params.startTime, endTime: params.endTime, limit });
       return getTopValidatorsByEarnings(params.startTime, params.endTime, limit);
     },
   );
@@ -193,6 +208,7 @@ export const registerTools = (server: McpServer): void => {
     },
     async (params) => {
       const limit = typeof params.limit === 'number' ? params.limit : 5;
+      logToolInvocation('get_top_validators_by_stake', { startTime: params.startTime, endTime: params.endTime, limit });
       return getTopValidatorsByStake(params.startTime, params.endTime, limit);
     },
   );
@@ -207,6 +223,7 @@ export const registerTools = (server: McpServer): void => {
     },
     async (params) => {
       const limit = typeof params.limit === 'number' ? params.limit : 5;
+      logToolInvocation('get_top_proposer_success_rate', { startTime: params.startTime, endTime: params.endTime, limit });
       return getTopProposerSuccessRate(params.startTime, params.endTime, limit);
     },
   );
@@ -221,6 +238,7 @@ export const registerTools = (server: McpServer): void => {
     },
     async (params) => {
       const limit = typeof params.limit === 'number' ? params.limit : 5;
+      logToolInvocation('get_top_cosigner_success_rate', { startTime: params.startTime, endTime: params.endTime, limit });
       return getTopCosignerSuccessRate(params.startTime, params.endTime, limit);
     },
   );

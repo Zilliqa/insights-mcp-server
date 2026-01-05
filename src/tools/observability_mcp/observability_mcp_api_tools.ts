@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import logger from '../../utils/logger.js';
 
 // --- Constants for Google Cloud Monitoring ---
 const GCP_PROJECT_ID = "prj-p-devops-services-tvwmrf63";
@@ -49,7 +50,7 @@ export async function getValidators(): Promise<{ name: string; public_key: strin
                 // The validator info is stored in the metric labels. We map over the time series to extract it.
                 return { type: 'json', data: timeSeriesData.map((ts: any) => ts.metric.labels) };
             } catch (e) {
-                console.error("Failed to parse validator list from sub-MCP:", e);
+                logger.error(e as unknown as object, "Failed to parse validator list from sub-MCP");
             }
         }
 
@@ -434,7 +435,7 @@ function parseTimeSeriesValue(content: unknown): number {
                 }, 0);
             }
         } catch (e) {
-            console.error("Failed to parse time series data from sub-MCP:", e);
+            logger.error(e as unknown as object, "Failed to parse time series data from sub-MCP");
         }
     }
     return 0;
@@ -472,7 +473,7 @@ function parseTimeSeriesLatestValue(content: unknown): number {
                 }
             }
         } catch (e) {
-            console.error("Failed to parse time series data from sub-MCP:", e);
+            logger.error(e as unknown as object, "Failed to parse time series data from sub-MCP");
         }
     }
     // Return 0 if data is not found or parsing fails
@@ -514,7 +515,7 @@ function parseTimeSeriesGroupSum(
                 }
             }
         } catch (e) {
-            console.error("Failed to parse grouped time series data from sub-MCP:", e);
+            logger.error(e as unknown as object, "Failed to parse grouped time series data from sub-MCP");
         }
     }
     return totals;
@@ -554,7 +555,7 @@ function parseTimeSeriesGroupLatest(
                 }
             }
         } catch (e) {
-            console.error("Failed to parse grouped-latest time series data from sub-MCP:", e);
+            logger.error(e as unknown as object, "Failed to parse grouped-latest time series data from sub-MCP");
         }
     }
     return latest;
@@ -911,10 +912,10 @@ async function withMcpClient<T>(
     
     let transport;
     if (subMcpUrl && (subMcpUrl.startsWith("http://") || subMcpUrl.startsWith("https://"))) {
-        console.error(`Connecting to sub-MCP server via HTTP: ${subMcpUrl}`);
+        logger.debug(`Connecting to sub-MCP server via HTTP: ${subMcpUrl}`);
         transport = new StreamableHTTPClientTransport(new URL(subMcpUrl));
     } else {
-        console.error(`Connecting to sub-MCP server via stdio: ${subMcpCommand} ${subMcpArgs}`);
+        logger.debug(`Connecting to sub-MCP server via stdio: ${subMcpCommand} ${subMcpArgs}`);
         transport = new StdioClientTransport({
             command: subMcpCommand,
             args: subMcpArgs,
@@ -924,11 +925,11 @@ async function withMcpClient<T>(
     try {
         await mcpClient.connect(transport);
         const result = await action(mcpClient);
-        console.error("Received response from sub-MCP server.");
+        logger.debug("Received response from sub-MCP server.");
         const content = Array.isArray(result) ? result : [result];
         return { content };
     } catch (error) {
-        console.error("ERROR during sub-MCP communication:", error);
+        logger.error(error as unknown as object, "ERROR during sub-MCP communication");
         const errorResponse = {
             status: "failed",
             reason: `Error calling downstream MCP: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -936,7 +937,7 @@ async function withMcpClient<T>(
         return { content: [{ type: "text", text: JSON.stringify(errorResponse) }] };
     } finally {
         if (mcpClient) {
-            console.error("Closing connection to sub-MCP server.");
+            logger.debug("Closing connection to sub-MCP server.");
             await mcpClient.close();
         }
     }
