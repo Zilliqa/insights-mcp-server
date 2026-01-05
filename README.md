@@ -15,12 +15,17 @@ You can ask your MCP client natural language questions about the Zilliqa validat
 - **"What is the zil stake for Binance in October 2025?"**
 - **"How reliable was Zillet at proposing blocks last week?"**
 - **"What were the total ZIL rewards for Moonlet yesterday?"**
+- **give me the top 10 validators with more stake**
+- **give me the top 10 validators with more rewards**
 
 Your MCP client will translate these questions into the appropriate tool calls to fetch the data from the MCP server.
 
 ## Available Tools
 
 This server exposes several tools that query validator performance and status metrics. These tools act as a proxy, connecting to the downstream `observability-mcp` server, which is part of the [`gcloud-mcp`](https://github.com/Zilliqa/gcloud-mcp), to retrieve data from Google Cloud Monitoring.
+
+-   **`listValidators()`**
+  -   Lists all known validators and their metadata: `name`, `public_key`, `address`, and `zil_address`.
 
 -   **`getTotalValidatorEarnings(validator, startTime?, endTime?)`**
     -   Retrieves the total ZIL rewards earned by a specific validator within a given time frame. Defaults to the last hour if no time is specified.
@@ -36,6 +41,18 @@ This server exposes several tools that query validator performance and status me
 
 -   **`getCosignerSuccessRate(public_key, startTime?, endTime?)`**
     -   Measures the validator's success rate for cosigning (attesting to) blocks proposed by others. This demonstrates consistent uptime and connectivity.
+
+-   **`getTopValidatorsByEarnings(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by total ZIL earnings within a given time frame. Defaults to the last hour and top 5 when not specified.
+
+-   **`getTopValidatorsByStake(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by current delegated stake (GAUGE metric, latest value per validator). Defaults to the last hour and top 5.
+
+-   **`getTopProposerSuccessRate(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by proposer success rate over a time frame (successful proposals divided by total proposals). Defaults to the last hour and top 5.
+
+-   **`getTopCosignerSuccessRate(startTime?, endTime?, limit?)`**
+  -   Retrieves the top N validators ranked by cosigner success rate over a time frame (successful cosignatures divided by total cosignatures). Defaults to the last hour and top 5.
 
 ## Development
 
@@ -86,6 +103,8 @@ Add this configuration in the LLM local settings to test the MCP server. This is
   }
 }
 ```
+
+**Note:** The Zilliqa Insights MCP server connects to an instance of the [gcloud MCP server](https://github.com/Zilliqa/gcloud-mcp) referred in the OBSERVABILITY_MCP_URL variable to retrieve the validators data. These observability metrics are restricted and not publicly available.
 
 ## Deployment
 

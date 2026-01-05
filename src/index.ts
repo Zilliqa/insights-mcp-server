@@ -5,6 +5,8 @@ import { registerTools } from './tools/registration.js';
 import pkg from '../package.json' with { type: 'json' };
 import express, { Request, Response } from "express";
 import cors from "cors";
+import logger from './utils/logger.js';
+import { withRequestContext } from './utils/requestContext.js';
 
 // HTTP Config
 const PORT = process.env.PORT || 3001;
@@ -29,7 +31,7 @@ async function main() {
 
     if (isHttpMode) {
         // HTTP Streamable Transport Mode
-        console.error(`Starting EVM MCP Server on ${HOST}:${PORT} with Streamable HTTP transport`);
+        logger.info(`Starting EVM MCP Server on ${HOST}:${PORT} with Streamable HTTP transport`);
 
         // Setup Express
         const app = express();
@@ -58,7 +60,7 @@ async function main() {
         app.get('/mcp', (req: Request, res: Response) => {
             // Get real client IP (supports proxies/load balancers)
             const realIp = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.ip;
-            console.error(`Received GET connection request from ${realIp}`);
+            logger.debug(`Received GET connection request from ${realIp}`);
 
             // Server MUST either return 'text/event-stream' or 405 Method Not Allowed.
             res.writeHead(200, {
@@ -75,28 +77,30 @@ async function main() {
         // Main MCP endpoint - stateless mode (POST)
         app.post('/mcp', async (req: Request, res: Response) => {
             const realIp = req.headers['x-forwarded-for']?.toString().split(',')[0]?.trim() || req.ip;
-            console.error(`Received POST MCP request from ${realIp}`);
+            logger.debug(`Received POST MCP request from ${realIp}`);
             
             try {
-                // Create a new transport for each request (stateless mode)
-                const transport = new StreamableHTTPServerTransport({
-                    sessionIdGenerator: undefined, // Stateless mode
-                    enableJsonResponse: false,
+                await withRequestContext({ ip: realIp }, async () => {
+                    // Create a new transport for each request (stateless mode)
+                    const transport = new StreamableHTTPServerTransport({
+                        sessionIdGenerator: undefined, // Stateless mode
+                        enableJsonResponse: false,
+                    });
+
+                    // Handle request close
+                    res.on('close', () => {
+                        transport.close();
+                    });
+
+                    // Connect transport to server
+                    await server.connect(transport);
+
+                    // Handle the request
+                    await transport.handleRequest(req, res, req.body);
                 });
-                
-                // Handle request close
-                res.on('close', () => {
-                    transport.close();
-                });
-                
-                // Connect transport to server
-                await server.connect(transport);
-                
-                // Handle the request
-                await transport.handleRequest(req, res, req.body);
                 
             } catch (error) {
-                console.error('Error handling MCP request:', error);
+                logger.error(error as unknown as object, 'Error handling MCP request');
                 if (!res.headersSent) {
                     res.status(500).json({
                         jsonrpc: '2.0',
@@ -114,19 +118,19 @@ async function main() {
         // Start the HTTP server
         const httpServer = app.listen(Number(PORT), HOST, (error) => {
             if (error) {
-                console.error('Failed to start server:', error);
+                logger.error(error as unknown as object, 'Failed to start server');
                 process.exit(1);
             }
-            console.error(`EVM MCP Server listening on port ${PORT}`);
-            console.error(`Endpoint: http://${HOST}:${PORT}/mcp`);
-            console.error(`Health: http://${HOST}:${PORT}/health`);
+            logger.info(`EVM MCP Server listening on port ${PORT}`);
+            logger.info(`Endpoint: http://${HOST}:${PORT}/mcp`);
+            logger.info(`Health: http://${HOST}:${PORT}/health`);
         });
 
         // Handle graceful shutdown
         const shutdown = () => {
             server.close();
             httpServer.close(() => {
-                console.error('HTTP server closed');
+                logger.info('HTTP server closed');
                 process.exit(0);
             });
         };
@@ -138,7 +142,7 @@ async function main() {
         // Default Stdio Transport Mode
         const transport = new StdioServerTransport();
         await server.connect(transport);
-        console.error("MCP Server running on stdio");
+        logger.info("MCP Server running on stdio");
         
         // Handle graceful shutdown for stdio mode
         process.on('SIGINT', () => {
@@ -153,6 +157,6 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error("Fatal error in main():", error);
+    logger.error(error as unknown as object, "Fatal error in main()");
     process.exit(1);
 });
