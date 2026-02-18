@@ -16,10 +16,10 @@ patches:
         value: insights.mcp.zilliqa.com
       - op: replace
         path: "/spec/parentRefs/0/name"
-        value: mcp-gateway
+        value: gke-gateway
       - op: replace
         path: "/spec/parentRefs/0/namespace"
-        value: mcp-gateway-prd
+        value: gke-gateway-prd
   - target:
       kind: ConfigMap
       name: insights-mcp-server
