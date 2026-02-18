@@ -16,10 +16,10 @@ patches:
         value: insights.mcp.zilstg.dev
       - op: replace
         path: "/spec/parentRefs/0/name"
-        value: mcp-gateway
+        value: gke-gateway
       - op: replace
         path: "/spec/parentRefs/0/namespace"
-        value: mcp-gateway-stg
+        value: gke-gateway-stg
   - target:
       kind: ConfigMap
       name: insights-mcp-server
