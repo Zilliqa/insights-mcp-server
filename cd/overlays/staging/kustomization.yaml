@@ -27,3 +27,10 @@ patches:
       - op: add
         path: /data/OBSERVABILITY_MCP_URL
         value: "http://observability-mcp.observability-mcp-stg.svc.cluster.local:3000/mcp"
+  - target:
+      kind: GCPBackendPolicy
+      name: insights-mcp-server
+    patch: |-
+      - op: replace
+        path: "/spec/default/securityPolicy"
+        value: staging-gateway
