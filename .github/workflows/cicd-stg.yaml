@@ -45,55 +45,57 @@ jobs:
           service-account: "${{ secrets.GCP_STG_GITHUB_SA_DOCKER_REGISTRY }}"
           cache-key: ${{ env.IMAGE_NAME }}-cache
 
-  deploy:
-    needs: [build]
-    permissions:
-      id-token: write
-      contents: write
-    runs-on: ubuntu-22.04
-    if: github.ref_name == github.event.repository.default_branch
-    strategy:
-      fail-fast: false
-      matrix:
-        application:
-          - insights-mcp-server
-    env:
-      APP_NAME: ${{ matrix.application }}
-      Z_ENV: infra/live/gcp/non-production/prj-d-staging/z_ase1.yaml
-      Z_SERVICE_ACCOUNT: ${{ secrets.GCP_STG_GITHUB_SA_K8S_DEPLOY }}
-      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN_STG }}
-      GITHUB_PAT: ${{ secrets.GH_PAT }}
-      Z_IMAGE: asia-docker.pkg.dev/prj-d-devops-services-4dgwlsse/zilliqa-private/z:latest
-      REGISTRY: asia-docker.pkg.dev
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
-        with:
-          repository: Zilliqa/devops
-          token: ${{ env.GITHUB_PAT }}
-          ref: main
-          sparse-checkout: |
-            ${{ env.Z_ENV }}
+  # Staging deployment disabled
+  # ---------------------------
+  # deploy:
+  #   needs: [build]
+  #   permissions:
+  #     id-token: write
+  #     contents: write
+  #   runs-on: ubuntu-22.04
+  #   if: github.ref_name == github.event.repository.default_branch
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       application:
+  #         - insights-mcp-server
+  #   env:
+  #     APP_NAME: ${{ matrix.application }}
+  #     Z_ENV: infra/live/gcp/non-production/prj-d-staging/z_ase1.yaml
+  #     Z_SERVICE_ACCOUNT: ${{ secrets.GCP_STG_GITHUB_SA_K8S_DEPLOY }}
+  #     OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN_STG }}
+  #     GITHUB_PAT: ${{ secrets.GH_PAT }}
+  #     Z_IMAGE: asia-docker.pkg.dev/prj-d-devops-services-4dgwlsse/zilliqa-private/z:latest
+  #     REGISTRY: asia-docker.pkg.dev
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+  #       with:
+  #         repository: Zilliqa/devops
+  #         token: ${{ env.GITHUB_PAT }}
+  #         ref: main
+  #         sparse-checkout: |
+  #           ${{ env.Z_ENV }}
 
-      - name: Authenticate to Google Cloud
-        id: google-auth
-        uses: google-github-actions/auth@71fee32a0bb7e97b4d33d548e7d957010649d8fa
-        with:
-          token_format: "access_token"
-          workload_identity_provider: "${{ secrets.GCP_PRD_GITHUB_WIF }}"
-          service_account: ${{ env.Z_SERVICE_ACCOUNT }}
-          create_credentials_file: true
+  #     - name: Authenticate to Google Cloud
+  #       id: google-auth
+  #       uses: google-github-actions/auth@71fee32a0bb7e97b4d33d548e7d957010649d8fa
+  #       with:
+  #         token_format: "access_token"
+  #         workload_identity_provider: "${{ secrets.GCP_PRD_GITHUB_WIF }}"
+  #         service_account: ${{ env.Z_SERVICE_ACCOUNT }}
+  #         create_credentials_file: true
 
-      - name: Deploy application
-        run: |
-          gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://${{ env.REGISTRY }}
-          docker run --rm \
-              -e ZQ_USER='${{ env.Z_SERVICE_ACCOUNT }}' \
-              -e Z_ENV='/devops/${{ env.Z_ENV }}' \
-              -e OP_SERVICE_ACCOUNT_TOKEN='${{ env.OP_SERVICE_ACCOUNT_TOKEN }}' \
-              -e GITHUB_PAT='${{ env.GITHUB_PAT }}' \
-              -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE='/google/application_default_credentials.json' \
-              -v `pwd`:/devops \
-              -v ${{ steps.google-auth.outputs.credentials_file_path }}:/google/application_default_credentials.json \
-              --name z_container ${{ env.Z_IMAGE }} \
-              bash -c "gcloud config set account ${{ env.Z_SERVICE_ACCOUNT }} && z /app /devops app sync --cache-dir .cache ${{ env.APP_NAME }}"
+  #     - name: Deploy application
+  #       run: |
+  #         gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://${{ env.REGISTRY }}
+  #         docker run --rm \
+  #             -e ZQ_USER='${{ env.Z_SERVICE_ACCOUNT }}' \
+  #             -e Z_ENV='/devops/${{ env.Z_ENV }}' \
+  #             -e OP_SERVICE_ACCOUNT_TOKEN='${{ env.OP_SERVICE_ACCOUNT_TOKEN }}' \
+  #             -e GITHUB_PAT='${{ env.GITHUB_PAT }}' \
+  #             -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE='/google/application_default_credentials.json' \
+  #             -v `pwd`:/devops \
+  #             -v ${{ steps.google-auth.outputs.credentials_file_path }}:/google/application_default_credentials.json \
+  #             --name z_container ${{ env.Z_IMAGE }} \
+  #             bash -c "gcloud config set account ${{ env.Z_SERVICE_ACCOUNT }} && z /app /devops app sync --cache-dir .cache ${{ env.APP_NAME }}"

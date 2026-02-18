@@ -7,8 +7,8 @@ metadata:
     app.kubernetes.io/name: insights-mcp-server
 spec:
   parentRefs:
-    - name: mcp-gateway
-      namespace: mcp-gateway-stg
+    - name: gke-gateway
+      namespace: gke-gateway-stg
       sectionName: https
   hostnames:
     - "insights.mcp.zilstg.dev"
