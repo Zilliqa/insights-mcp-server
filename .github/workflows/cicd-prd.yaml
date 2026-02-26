@@ -9,6 +9,7 @@ jobs:
     permissions:
       id-token: write
       contents: write
+      security-events: write
     runs-on: ubuntu-22.04
     if: github.actor != 'dependabot[bot]'
     name: "Build image"
@@ -29,7 +30,7 @@ jobs:
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
 
       - name: Docker build and push in production
-        uses: Zilliqa/gh-actions-workflows/actions/ci-dockerized-app-build-push@v2
+        uses: Zilliqa/gh-actions-workflows/actions/ci-dockerized-app-build-push@v3
         with:
           context: .
           push: true
@@ -40,6 +41,7 @@ jobs:
           workload-identity-provider: "${{ secrets.GCP_PRD_GITHUB_WIF }}"
           service-account: "${{ secrets.GCP_PRD_GITHUB_SA_DOCKER_REGISTRY }}"
           cache-key: ${{ env.IMAGE_NAME }}-cache
+          trivy-scan: true
 
   deploy:
     needs: [build]
