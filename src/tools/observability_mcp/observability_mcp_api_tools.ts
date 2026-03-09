@@ -5,7 +5,7 @@ import logger from '../../utils/logger.js';
 
 // --- Constants for Google Cloud Monitoring ---
 const GCP_PROJECT_ID = "prj-p-devops-services-tvwmrf63";
-const GCE_INSTANCE_ID = "7753770768243446498";
+const GCE_INSTANCE_FILTER = '(resource.labels.instance_id = "7753770768243446498" OR resource.labels.instance_id = "5945232229723136580")';
 const METRIC_TYPE_EARNINGS = "workload.googleapis.com/validator_earned_reward";
 const METRIC_TYPE_PROPOSALS = "prometheus.googleapis.com/zilliqa_proposed_views_total/counter";
 const METRIC_TYPE_COSIGNATURES = "prometheus.googleapis.com/zilliqa_cosigned_views_total/counter";
@@ -90,7 +90,7 @@ export async function getTotalValidatorEarnings(
         // This matches the expected input schema of the downstream 'list_time_series' tool.
         const toolArguments = {
             name: `projects/${GCP_PROJECT_ID}`,
-            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "gce_instance" AND resource.labels.instance_id = "${GCE_INSTANCE_ID}"`,
+            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "gce_instance" AND ${GCE_INSTANCE_FILTER}`,
             interval: {
                 startTime: queryStartTime,
                 endTime: queryEndTime,
@@ -148,7 +148,7 @@ export async function getValidatorEarningsBreakdown(
     
     return withMcpClient(async (mcpClient) => {
         const getEarningsForType = async (role: 'proposer' | 'cosigner'): Promise<number> => {            
-            const filter = `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "gce_instance" AND resource.labels.instance_id = "${GCE_INSTANCE_ID}" AND metric.labels.role = "${role}"`;      
+            const filter = `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "gce_instance" AND ${GCE_INSTANCE_FILTER} AND metric.labels.role = "${role}"`;      
             const toolArguments = {
                 name: `projects/${GCP_PROJECT_ID}`,
                 filter: filter,
@@ -851,7 +851,7 @@ export async function getTopValidatorsByEarnings(
     return withMcpClient(async (mcpClient) => {
         const toolArguments = {
             name: `projects/${GCP_PROJECT_ID}`,
-            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND resource.type = "gce_instance" AND resource.labels.instance_id = "${GCE_INSTANCE_ID}"`,
+            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND resource.type = "gce_instance" AND ${GCE_INSTANCE_FILTER}`,
             interval: {
                 startTime: queryStartTime,
                 endTime: queryEndTime,
