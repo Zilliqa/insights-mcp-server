@@ -5,8 +5,12 @@ import logger from '../../utils/logger.js';
 
 // --- Constants for Google Cloud Monitoring ---
 const GCP_PROJECT_ID = "prj-p-devops-services-tvwmrf63";
-const GCE_INSTANCE_FILTER = '(resource.labels.instance_id = "7753770768243446498" OR resource.labels.instance_id = "5945232229723136580")';
-const METRIC_TYPE_EARNINGS = "workload.googleapis.com/validator_earned_reward";
+// validator_earned_reward is emitted by every Zilliqa node and ingested via the
+// Ops Agent in `googlemanagedprometheus` mode (DEVOPS-316). Resource type is
+// therefore `prometheus_target` rather than `gce_instance`. No instance pin —
+// every host reports identical values, so we dedupe with a cross-series MEAN
+// aggregation grouped by (address, role).
+const METRIC_TYPE_EARNINGS = "prometheus.googleapis.com/validator_earned_reward/counter";
 const METRIC_TYPE_PROPOSALS = "prometheus.googleapis.com/zilliqa_proposed_views_total/counter";
 const METRIC_TYPE_COSIGNATURES = "prometheus.googleapis.com/zilliqa_cosigned_views_total/counter";
 const METRIC_TYPE_STAKE = "prometheus.googleapis.com/zilliqa_deposit_balance/gauge";
@@ -90,7 +94,7 @@ export async function getTotalValidatorEarnings(
         // This matches the expected input schema of the downstream 'list_time_series' tool.
         const toolArguments = {
             name: `projects/${GCP_PROJECT_ID}`,
-            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "gce_instance" AND ${GCE_INSTANCE_FILTER}`,
+            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "prometheus_target"`,
             interval: {
                 startTime: queryStartTime,
                 endTime: queryEndTime,
@@ -98,6 +102,8 @@ export async function getTotalValidatorEarnings(
             aggregation: {
                 alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
                 perSeriesAligner: 'ALIGN_DELTA',
+                crossSeriesReducer: 'REDUCE_MEAN',
+                groupByFields: ['metric.label.address', 'metric.label.role'],
             },
         };
 
@@ -148,7 +154,7 @@ export async function getValidatorEarningsBreakdown(
     
     return withMcpClient(async (mcpClient) => {
         const getEarningsForType = async (role: 'proposer' | 'cosigner'): Promise<number> => {            
-            const filter = `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "gce_instance" AND ${GCE_INSTANCE_FILTER} AND metric.labels.role = "${role}"`;      
+            const filter = `metric.type = "${METRIC_TYPE_EARNINGS}" AND metric.labels.address = "${validator}" AND resource.type = "prometheus_target" AND metric.labels.role = "${role}"`;
             const toolArguments = {
                 name: `projects/${GCP_PROJECT_ID}`,
                 filter: filter,
@@ -159,6 +165,8 @@ export async function getValidatorEarningsBreakdown(
                 aggregation: {
                     alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
                     perSeriesAligner: 'ALIGN_DELTA',
+                    crossSeriesReducer: 'REDUCE_MEAN',
+                    groupByFields: ['metric.label.address', 'metric.label.role'],
                 },
             };
 
@@ -851,7 +859,7 @@ export async function getTopValidatorsByEarnings(
     return withMcpClient(async (mcpClient) => {
         const toolArguments = {
             name: `projects/${GCP_PROJECT_ID}`,
-            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND resource.type = "gce_instance" AND ${GCE_INSTANCE_FILTER}`,
+            filter: `metric.type = "${METRIC_TYPE_EARNINGS}" AND resource.type = "prometheus_target"`,
             interval: {
                 startTime: queryStartTime,
                 endTime: queryEndTime,
@@ -859,6 +867,8 @@ export async function getTopValidatorsByEarnings(
             aggregation: {
                 alignmentPeriod: `${(end.getTime() - start.getTime()) / 1000}s`,
                 perSeriesAligner: 'ALIGN_DELTA',
+                crossSeriesReducer: 'REDUCE_MEAN',
+                groupByFields: ['metric.label.address', 'metric.label.role'],
             },
         };
 
